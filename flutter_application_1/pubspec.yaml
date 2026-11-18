@@ -1,0 +1,30 @@
+# ============================================================
+# pubspec.yaml = "daftar belanja" project Flutter.
+# Di sini kamu mendaftarkan library (package) yang dipakai.
+# Setelah mengubah file ini WAJIB jalankan:  flutter pub get
+# ============================================================
+name: responsi_base                 # nama project (huruf kecil, tanpa spasi)
+description: Base code responsi Praktikum Mobile.
+publish_to: 'none'                  # jangan dipublish ke pub.dev
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'             # versi Dart yang didukung
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2                      # Pt 6  : HTTP Request ke API
+  hive: ^2.2.3                      # Pt 7  : database lokal (inti)
+  hive_flutter: ^1.1.0              # Pt 7  : Hive versi Flutter (initFlutter, listenable)
+  shared_preferences: ^2.3.2        # Pt 7  : simpan session (username)
+  flutter_local_notifications: ^17.2.4   # Pt 8 : notifikasi lokal (OPSIONAL)
+  geolocator: ^13.0.1               # Pt 8  : lokasi / LBS (OPSIONAL)
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
