@@ -1,99 +1,140 @@
-// =====================================================================
-// FILE   : lib/pages/cart_page.dart
-// FUNGSI : Halaman Cart: list item milik USER YANG LOGIN saja, tombol hapus,
-//          dan total harga.
-// [REF]  data dari services/hive_service.dart (itemsOf & remove)
-//        item masuk dari detail_page.dart
-// =====================================================================
-
 import 'package:flutter/material.dart';
-import 'package:hive_flutter/hive_flutter.dart'; // untuk Box & .listenable()
-import '../config/app_config.dart';
-import '../models/cart_item.dart';
-import '../services/hive_service.dart';
-import '../widgets/net_image.dart';
+import '../models/product.dart';
+import '../services/storage_service.dart';
+import 'detail_page.dart';
 
-// StatelessWidget = tampilan tidak menyimpan state sendiri; pembaruan diurus
-// oleh ValueListenableBuilder yang "mendengarkan" perubahan Hive.
-class CartPage extends StatelessWidget {
-  final String username;
-  const CartPage({super.key, required this.username});
+class CartPage extends StatefulWidget {
+  const CartPage({super.key});
+
+  @override
+  State<CartPage> createState() => _CartPageState();
+}
+
+class _CartPageState extends State<CartPage> {
+  List<Product> _items = []; // isi keranjang
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCart();
+  }
+
+  void _loadCart() {
+    setState(() {
+      _items = StorageService.getCart();
+    });
+  }
+
+  Future<void> _delete(Product product) async {
+    await StorageService.removeFromCart(product.id);
+    _loadCart();
+  }
 
   @override
   Widget build(BuildContext context) {
+    double total = 0;
+    for (final item in _items) {
+      total += item.price;
+    }
+
     return Scaffold(
-      appBar: AppBar(title: Text(AppConfig.cartLabel)),
-      // ValueListenableBuilder: tiap ada perubahan isi box (tambah/hapus),
-      // bagian builder di bawah dijalankan ulang -> UI otomatis ter-update.
-      body: ValueListenableBuilder<Box<CartItem>>(
-        valueListenable: HiveService.box.listenable(),
-        builder: (context, _, __) {
-          // Ambil hanya item milik user ini (inilah pemisah cart antar user).
-          final items = HiveService.itemsOf(username);
-
-          if (items.isEmpty) {
-            return Center(child: Text('${AppConfig.cartLabel} masih kosong'));
-          }
-
-          // Hitung total: mulai dari 0, tambahkan subtotal tiap item.
-          final total = items.fold<double>(0, (sum, e) => sum + e.subtotal);
-
-          return Column(
-            children: [
-              Expanded(
-                // Expanded = list mengisi sisa ruang, total tetap di bawah
-                child: ListView.builder(
-                  itemCount: items.length,
-                  itemBuilder: (context, i) {
-                    final item = items[i];
-                    return Card(
-                      margin: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 5),
-                      child: ListTile(
-                        leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: NetImage(url: item.imageUrl),
-                        ),
-                        title: Text(item.title,
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text(AppConfig.showPrice
-                            ? 'Qty: ${item.qty}  |  ${AppConfig.currency}${item.subtotal.toStringAsFixed(2)}'
-                            : 'Qty: ${item.qty}'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => HiveService.remove(item), // hapus dari Hive
-                        ),
-                      ),
-                    );
-                  },
-                ),
+      appBar: AppBar(title: const Text('Keranjang')),
+      body: _items.isEmpty
+          // Keranjang kosong
+          ? const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.shopping_cart_outlined,
+                      size: 72, color: Colors.grey),
+                  SizedBox(height: 12),
+                  Text('Keranjang masih kosong',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  Text('Yuk, cari produk favoritmu di Home'),
+                ],
               ),
-              // Bar total di bawah (hanya jika showPrice = true)
-              if (AppConfig.showPrice)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: SafeArea(
-                  top: false,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Total',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                      Text('${AppConfig.currency}${total.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: Colors.green)),
-                    ],
+            )
+          // Keranjang ada isi
+          : Column(
+              children: [
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _items.length,
+                    itemBuilder: (context, index) {
+                      final product = _items[index];
+
+                      return Card(
+                        color: Colors.white,
+                        child: ListTile(
+                          onTap: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    DetailPage(productId: product.id),
+                              ),
+                            );
+
+                            _loadCart();
+                          },
+                          // Gambar
+                          leading: SizedBox(
+                            width: 56,
+                            height: 56,
+                            child: Image.network(product.image,
+                                fit: BoxFit.contain),
+                          ),
+                          // Nama
+                          title: Text(product.title,
+                              maxLines: 2, overflow: TextOverflow.ellipsis),
+                          // Harga dan rating
+                          subtitle: Row(
+                            children: [
+                              Text('\$${product.price}',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                              const SizedBox(width: 12),
+                              const Icon(Icons.star,
+                                  size: 16, color: Colors.amber),
+                              Text(' ${product.rate}'),
+                            ],
+                          ),
+                          // Tombol hapus
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline,
+                                color: Colors.red),
+                            onPressed: () => _delete(product),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
-              ),
-            ],
-          );
-        },
-      ),
+
+                // Total di bawah
+                Container(
+                  width: double.infinity,
+                  color: Colors.white,
+                  padding: const EdgeInsets.all(16),
+                  child: SafeArea(
+                    top: false,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Total (${_items.length} produk)'),
+                        Text('\$${total.toStringAsFixed(2)}',
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }

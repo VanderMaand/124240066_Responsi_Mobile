@@ -1,143 +1,186 @@
-// =====================================================================
-// FILE   : lib/pages/detail_page.dart
-// FUNGSI : Halaman Detail: semua info item, pengatur qty (0 < qty <= stok),
-//          dan tombol Add to Cart yang menyimpan ke Hive.
-// [REF]  data masuk dari home_page.dart | simpan lewat services/hive_service.dart
-//        notifikasi lewat services/notification_service.dart
-// =====================================================================
-
 import 'package:flutter/material.dart';
-import '../config/app_config.dart';
-import '../models/cart_item.dart';
-import '../models/item_model.dart';
-import '../services/hive_service.dart';
-import '../services/notification_service.dart';
-import '../widgets/net_image.dart';
+import '../models/product.dart';
+import '../services/api_service.dart';
+import '../services/storage_service.dart';
+import 'cart_page.dart';
 
 class DetailPage extends StatefulWidget {
-  final ItemModel item; // item yang dipilih di Home
-  final String username; // user yang sedang login (untuk disimpan bersama cart)
-  const DetailPage({super.key, required this.item, required this.username});
+  final int productId; // yang dikirim hanya id, datanya diambil dari API detail
+
+  const DetailPage({super.key, required this.productId});
 
   @override
   State<DetailPage> createState() => _DetailPageState();
 }
 
 class _DetailPageState extends State<DetailPage> {
-  int _qty = AppConfig.minQty; // qty awal = qty minimal
+  late Future<Product> _futureProduct;
 
-  // [FUNGSI] _addToCart : dijalankan saat tombol Add to Cart ditekan.
-  Future<void> _addToCart() async {
-    final item = widget.item; // "widget." = mengakses data milik StatefulWidget di atas
+  @override
+  void initState() {
+    super.initState();
+    // widget.productId = mengambil nilai dari class DetailPage di atas
+    _futureProduct = ApiService.getProductDetail(widget.productId);
+  }
 
-    // 1) Simpan ke Hive: produk + user + qty.
-    await HiveService.addToCart(CartItem(
-      username: widget.username,
-      itemId: item.id,
-      title: item.title,
-      imageUrl: item.imageUrl,
-      price: item.price,
-      qty: _qty,
-    ));
-
-    // 2) (Opsional) tampilkan notifikasi. try-catch agar tidak crash jika gagal.
-    if (AppConfig.enableNotification) {
-      try {
-        await NotificationService.show(
-          title: '${AppConfig.itemLabel} ditambahkan', // [HARDCODE] judul notifikasi
-          body: '${item.title} x$_qty masuk ${AppConfig.cartLabel}', // [HARDCODE] isi notifikasi
-        );
-      } catch (e) {
-        debugPrint('Notifikasi gagal: $e');
-      }
-    }
-
-    // 3) Beri tahu user lewat SnackBar (pesan kecil di bawah layar).
+  Future<void> _addToCart(Product product) async {
+    await StorageService.addToCart(product);
+    setState(() {});
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${item.title} x$_qty ditambahkan')), // [HARDCODE] pesan sukses
+      const SnackBar(content: Text('Produk ditambahkan ke keranjang')),
+    );
+  }
+
+  Future<void> _removeFromCart(Product product) async {
+    await StorageService.removeFromCart(product.id);
+    setState(() {});
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Produk dihapus dari keranjang')),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final item = widget.item;
-    final maxQty = item.stock; // batas atas qty = stok
-    final canAdd = maxQty >= AppConfig.minQty; // jika stok 0, tombol dimatikan
-
     return Scaffold(
-      appBar: AppBar(title: Text('Detail ${AppConfig.itemLabel}')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start, // rata kiri
-          children: [
-            Center(child: NetImage(url: item.imageUrl, size: 220)),
-            const SizedBox(height: 16),
-            Text(item.title,
-                style:
-                    const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text(item.subtitle, style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 8),
-            if (AppConfig.showPrice) // "if" di dalam list: tampil hanya jika showPrice = true
-              Text('${AppConfig.currency}${item.price.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green)),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const Icon(Icons.star, color: Colors.amber, size: 18),
-                Text(' ${item.rating}  |  Stok: ${item.stock}'),
-              ],
-            ),
-            const Divider(height: 28), // garis pemisah
-            // Info tambahan dari AppConfig.extraFields. "..." = sebarkan isi list ke sini.
-            ...item.extras.entries.map((e) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Text('${e.key}: ${e.value}'),
-                )),
-            const SizedBox(height: 12),
-            const Text('Deskripsi',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            Text(item.description),
-            const SizedBox(height: 24),
-          ],
-        ),
+      appBar: AppBar(
+        title: const Text('Detail Produk'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.shopping_cart_outlined),
+            onPressed: () async {
+              // await = tunggu sampai user kembali dari Cart,
+              // lalu setState agar status tombol keranjang diperbarui.
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CartPage()),
+              );
+              setState(() {});
+            },
+          ),
+        ],
       ),
-      // Baris bawah: pengatur qty + tombol Add to Cart
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
+      body: FutureBuilder<Product>(
+        future: _futureProduct,
+        builder: (context, snapshot) {
+          // Loading
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          // Error
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Gagal memuat detail produk.'),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () {
+                      setState(() {
+                        _futureProduct =
+                            ApiService.getProductDetail(widget.productId);
+                      });
+                    },
+                    child: const Text('Coba lagi'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final product = snapshot.data!;
+          final inCart = StorageService.isInCart(product.id);
+
+          return Column(
             children: [
-              // Tombol kurang: aktif hanya jika qty > minQty
-              IconButton(
-                onPressed: _qty > AppConfig.minQty
-                    ? () => setState(() => _qty--)
-                    : null, // null = tombol nonaktif (abu-abu)
-                icon: const Icon(Icons.remove_circle_outline),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Hero image: paling atas dan besar
+                      Container(
+                        width: double.infinity,
+                        height: 300,
+                        color: Colors.white,
+                        padding: const EdgeInsets.all(24),
+                        child:
+                            Image.network(product.image, fit: BoxFit.contain),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Harga
+                            Text('\$${product.price}',
+                                style: TextStyle(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.bold,
+                                    color:
+                                        Theme.of(context).colorScheme.primary)),
+                            const SizedBox(height: 8),
+                            // Nama produk
+                            Text(product.title,
+                                style: const TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 8),
+                            // Rating dan jumlah review
+                            Row(
+                              children: [
+                                const Icon(Icons.star,
+                                    size: 18, color: Colors.amber),
+                                const SizedBox(width: 4),
+                                Text(
+                                    '${product.rate}  (${product.count} ulasan)'),
+                              ],
+                            ),
+                            const Divider(height: 32),
+                            // Deskripsi
+                            const Text('Deskripsi',
+                                style: TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 8),
+                            Text(product.description),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              Text('$_qty',
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold)),
-              // Tombol tambah: aktif hanya jika qty < stok
-              IconButton(
-                onPressed:
-                    _qty < maxQty ? () => setState(() => _qty++) : null,
-                icon: const Icon(Icons.add_circle_outline),
-              ),
-              const Spacer(), // dorong tombol ke kanan
-              FilledButton.icon(
-                onPressed: canAdd ? _addToCart : null,
-                icon: const Icon(Icons.add_shopping_cart),
-                label: Text(AppConfig.addButtonText),
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.all(16),
+                child: SafeArea(
+                  top: false,
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: inCart
+                        ? OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: const BorderSide(color: Colors.red),
+                            ),
+                            onPressed: () => _removeFromCart(product),
+                            icon: const Icon(Icons.remove_shopping_cart),
+                            label: const Text('Hapus dari Keranjang'),
+                          )
+                        : FilledButton.icon(
+                            onPressed: () => _addToCart(product),
+                            icon: const Icon(Icons.add_shopping_cart),
+                            label: const Text('Tambah ke Keranjang'),
+                          ),
+                  ),
+                ),
               ),
             ],
-          ),
-        ),
+          );
+        },
       ),
     );
   }

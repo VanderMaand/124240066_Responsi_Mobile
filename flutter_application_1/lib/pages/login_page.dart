@@ -1,17 +1,7 @@
-// =====================================================================
-// FILE   : lib/pages/login_page.dart
-// FUNGSI : Halaman login. Username bebas, password HARUS sama dengan
-//          AppConfig.loginPassword (NIM).
-// [REF]  setelah sukses -> MainPage (main_page.dart); session disimpan
-//        lewat services/session_service.dart
-// =====================================================================
-
 import 'package:flutter/material.dart';
-import '../config/app_config.dart';
-import '../services/session_service.dart';
+import '../services/storage_service.dart';
 import 'main_page.dart';
 
-// StatefulWidget = widget yang tampilannya bisa berubah (misal ikon mata password).
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -20,45 +10,32 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _formKey = GlobalKey<FormState>(); // "kunci" untuk memicu validasi form
-  final _usernameC = TextEditingController(); // pengendali isi kolom username
-  final _passwordC = TextEditingController(); // pengendali isi kolom password
-  bool _hidePassword = true; // true = password disamarkan ****
+  final _formKey = GlobalKey<FormState>(); // untuk mengecek isian form
+  final _emailController = TextEditingController(); // isi kolom email
+  final _passwordController = TextEditingController(); // isi kolom password
+  bool _hidePassword = true; // true = password disamarkan
 
-  // [FUNGSI] dispose : bersih-bersih controller saat halaman ditutup (cegah memory leak).
-  @override
-  void dispose() {
-    _usernameC.dispose();
-    _passwordC.dispose();
-    super.dispose();
-  }
-
-  // [FUNGSI] _login : dijalankan saat tombol Login ditekan.
   Future<void> _login() async {
-    // 1) Validasi kolom (tidak boleh kosong). Jika gagal -> berhenti.
+    // Jika ada kolom yang tidak valid, berhenti di sini.
     if (!_formKey.currentState!.validate()) return;
 
-    // 2) Cek password = NIM.
-    if (_passwordC.text != AppConfig.loginPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text(
-                'Password salah! Gunakan NIM kamu.')), // [HARDCODE] pesan error
-      );
-      return;
-    }
+    // Simpan email ke SharedPreferences sebagai tanda sudah login.
+    final email = _emailController.text.trim();
+    await StorageService.saveEmail(email);
 
-    // 3) Simpan username sebagai session.
-    final username = _usernameC.text.trim(); // trim = buang spasi di awal/akhir
-    await SessionService.saveUsername(username);
-
-    // 4) Pindah ke halaman utama. "mounted" = pastikan halaman masih aktif setelah await.
     if (!mounted) return;
+
     Navigator.pushReplacement(
-      // pushReplacement = ganti halaman (tombol back TIDAK kembali ke login)
       context,
-      MaterialPageRoute(builder: (_) => MainPage(username: username)),
+      MaterialPageRoute(builder: (context) => MainPage(email: email)),
     );
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -66,60 +43,80 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
-          // agar bisa di-scroll saat keyboard muncul
-          padding: const EdgeInsets.all(24), // jarak dalam
+          padding: const EdgeInsets.all(24),
           child: Form(
             key: _formKey,
             child: Column(
               children: [
                 Icon(Icons.storefront,
-                    size: 80,
-                    color: Theme.of(context).colorScheme.primary), // logo
-                const SizedBox(height: 8), // jarak vertikal
-                Text(AppConfig.appName,
-                    style: const TextStyle(
-                        fontSize: 24, fontWeight: FontWeight.bold)),
+                    size: 80, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(height: 8),
+                const Text('DascoKorup Mart',
+                    style:
+                        TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                const Text('Masuk untuk mulai belanja'),
                 const SizedBox(height: 32),
-                // ---- Kolom username ----
+
+                // Kolom email
                 TextFormField(
-                  controller: _usernameC,
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
                     labelText: 'Email',
-                    prefixIcon: Icon(Icons.person),
+                    prefixIcon: Icon(Icons.email_outlined),
                     border: OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Colors.white,
                   ),
-                  validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Email tidak boleh kosong'
-                      : null, // null = valid
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Email tidak boleh kosong';
+                    }
+                    if (!value.contains('@')) {
+                      return 'Format email tidak valid';
+                    }
+                    return null; // null = valid
+                  },
                 ),
                 const SizedBox(height: 16),
-                // ---- Kolom password ----
+
+                // Kolom password
                 TextFormField(
-                  controller: _passwordC,
+                  controller: _passwordController,
                   obscureText: _hidePassword,
                   decoration: InputDecoration(
                     labelText: 'Password',
-                    prefixIcon: const Icon(Icons.lock),
+                    prefixIcon: const Icon(Icons.lock_outline),
                     border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Colors.white,
                     suffixIcon: IconButton(
                       icon: Icon(_hidePassword
                           ? Icons.visibility
                           : Icons.visibility_off),
-                      // setState = beri tahu Flutter agar menggambar ulang tampilan
-                      onPressed: () =>
-                          setState(() => _hidePassword = !_hidePassword),
+                      onPressed: () {
+                        // setState = gambar ulang layar karena data berubah
+                        setState(() {
+                          _hidePassword = !_hidePassword;
+                        });
+                      },
                     ),
                   ),
-                  validator: (v) => (v == null || v.isEmpty)
-                      ? 'Password tidak boleh kosong'
-                      : null,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Password tidak boleh kosong';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 24),
+
                 SizedBox(
-                  width: double.infinity, // tombol selebar layar
+                  width: double.infinity,
+                  height: 48,
                   child: FilledButton(
                     onPressed: _login,
-                    child: const Text('Login'),
+                    child: const Text('Masuk'),
                   ),
                 ),
               ],
